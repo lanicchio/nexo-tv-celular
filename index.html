@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>NEXO TV · adicionar lista</title>
+<!-- Cadastro pelo celular da TV Samsung (a Samsung não deixa o app abrir porta como a LG/Android).
+     Publicado em GitHub Pages (lanicchio/nexo-tv-celular). O QR traz #t=tópico&k=chave: o fragmento não vai para servidor nenhum.
+     Os dados saem daqui CIFRADOS (AES-GCM com a chave do QR) para ntfy.sh/<tópico>; a TV escuta o tópico e decifra. -->
+<style>
+body { margin: 0; padding: 24px 18px; font-family: system-ui, -apple-system, Roboto, sans-serif; color: #fff; background: linear-gradient(135deg, #070b1a, #160c34 60%, #070b1a); min-height: 100vh; box-sizing: border-box; }
+h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: 2px; } h1 b { color: #3b82f6; }
+p { color: #9aa3c7; line-height: 1.4; }
+label { display: block; margin: 16px 0 6px; color: #c4b5fd; font-size: 15px; }
+input { width: 100%; box-sizing: border-box; padding: 14px; font-size: 17px; border-radius: 12px; border: 2px solid #2a3160; background: #161b36; color: #fff; }
+input:focus { outline: none; border-color: #7c3aed; }
+.or { text-align: center; color: #9aa3c7; margin: 22px 0 0; }
+button { width: 100%; margin-top: 26px; padding: 16px; font-size: 18px; font-weight: 700; color: #fff; border: 0; border-radius: 12px; background: linear-gradient(90deg, #7c3aed, #3b82f6); }
+button:disabled { opacity: .5; }
+.err { color: #fca5a5; }
+</style></head>
+<body>
+<h1>NEXO <b>TV</b></h1>
+<p>Cole o link M3U que o seu fornecedor mandou, ou preencha servidor, usuário e senha. Os dados vão cifrados: só a sua TV consegue ler.</p>
+<form autocomplete="off">
+<label>Link M3U</label><input name="link" inputmode="url" placeholder="http://…/get.php?username=…&amp;password=…" autocapitalize="off" autocorrect="off" spellcheck="false">
+<div class="or">ou</div>
+<label>Servidor</label><input name="server" inputmode="url" placeholder="http://servidor:porta" autocapitalize="off" autocorrect="off" spellcheck="false">
+<label>Usuário</label><input name="user" autocapitalize="off" autocorrect="off" spellcheck="false">
+<label>Senha</label><input name="pass" autocomplete="off" autocapitalize="off" spellcheck="false">
+<button type="submit">Enviar para a TV</button>
+<p class="msg"></p>
+</form>
+<script>
+const h = new URLSearchParams(location.hash.slice(1)), topic = h.get('t'), keyB64 = h.get('k');
+const form = document.querySelector('form'), msg = document.querySelector('.msg');
+const done = (title, text) => { document.body.innerHTML = document.querySelector('h1').outerHTML + '<h2></h2><p></p>'; document.querySelector('h2').textContent = title; document.querySelector('p').textContent = text; };
+const unb64 = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+if (!topic || !/^[a-z0-9]{20,64}$/.test(topic) || !keyB64 || !window.crypto || !crypto.subtle) done('Código inválido', 'Aponte a câmera de novo para o QR code que está na TV.');
+else form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(form));
+  if (!f.link.trim() && !(f.server.trim() && f.user.trim() && f.pass)) { msg.className = 'msg err'; msg.textContent = 'Cole o link ou preencha servidor, usuário e senha.'; return; }
+  const btn = form.querySelector('button'); btn.disabled = true; msg.className = 'msg'; msg.textContent = 'Enviando…';
+  try {
+    const key = await crypto.subtle.importKey('raw', unb64(keyB64), 'AES-GCM', false, ['encrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(f))));
+    const all = new Uint8Array(12 + ct.length); all.set(iv); all.set(ct, 12);
+    const r = await fetch('https://ntfy.sh/' + topic, { method: 'POST', body: btoa(String.fromCharCode(...all)) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    done('Enviado!', 'Pode olhar para a TV: ela já está entrando na lista.');
+  } catch (err) { btn.disabled = false; msg.className = 'msg err'; msg.textContent = 'Não consegui enviar (' + err.message + '). Confira a internet do celular e tente de novo.'; }
+});
+</script>
+</body></html>
